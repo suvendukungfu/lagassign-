@@ -209,10 +209,27 @@ if not df_raw.empty:
         col_d1, col_d2 = st.columns(2)
         with col_d1:
             st.dataframe(df_raw.head(100), use_container_width=True)
+            
+            # Export Logic
+            if st.session_state.learned_w is not None:
+                model_data = {
+                    "weights": st.session_state.learned_w.tolist(),
+                    "intercept": float(st.session_state.learned_b),
+                    "degree": poly_deg,
+                    "metrics": metrics if 'metrics' in locals() else "Run optimization first"
+                }
+                import json
+                st.download_button(
+                    label="📥 Export Model Weights (JSON)",
+                    data=json.dumps(model_data, indent=4),
+                    file_name="linear_regression_model.json",
+                    mime="application/json",
+                    use_container_width=True
+                )
         with col_d2:
             fig_dist = PlottingFactory.dataset_summary(df_raw)
             st.plotly_chart(fig_dist, use_container_width=True)
 
 # Footer
 st.divider()
-st.markdown("Developed by **Antigravity AI (MLE Lead)** | Version **3.5 Final Production**")
+st.markdown("Developed by **Antigravity AI (MLE Lead)** | Version **4.0 Production Ready**")

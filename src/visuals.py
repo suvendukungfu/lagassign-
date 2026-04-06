@@ -70,33 +70,43 @@ class PlottingFactory:
     @staticmethod
     def contour_descent(X: np.ndarray, y: np.ndarray, history: Dict[str, List]) -> go.Figure:
         """
-        Top-view contour of Loss with optimization path.
-        Works best for Degree 1 (m, b space).
+        Animated top-view contour of Loss with moving optimization point.
         """
-        if len(history['w'][0]) > 1:
-            # For higher dimensions, we'd need a projection. 
-            # For this UI, we'll return an info chart or mock 2D.
-            return go.Figure().update_layout(title="Contour only supports Degree 1 (m, b space)")
+        if not history or len(history['w']) == 0 or len(history['w'][0]) > 1:
+            return go.Figure().update_layout(**PlottingFactory.THEME, title="Contour supports Degree 1 only")
 
         # Range around converged params
-        final_w = history['w'][-1][0]
-        final_b = history['b'][-1]
-        
+        final_w, final_b = history['w'][-1][0], history['b'][-1]
         w_range = np.linspace(final_w - 5, final_w + 5, 50)
         b_range = np.linspace(final_b - 5, final_b + 5, 50)
         W, B = np.meshgrid(w_range, b_range)
+        Z = np.array([np.mean(((xi * X + bi) - y)**2) for xi, bi in zip(W.ravel(), B.ravel())]).reshape(W.shape)
+
+        fig = go.Figure(data=go.Contour(z=Z, x=w_range, y=b_range, colorscale='Magma', name='Loss Surface'))
         
-        Z = np.array([np.mean((xi * X + bi - y)**2) for xi, bi in zip(W.ravel(), B.ravel())]).reshape(W.shape)
-        
-        fig = go.Figure(data=go.Contour(z=Z, x=w_range, y=b_range, colorscale='Magma'))
-        
-        # Path Trace
-        w_path = [wt[0] for wt in history['w']]
+        m_path = [wt[0] for wt in history['w']]
         b_path = history['b']
-        fig.add_trace(go.Scatter(x=w_path, y=b_path, mode='lines+markers', name='Path', 
-                                marker=dict(size=4, color='white')))
+        skip = max(1, len(m_path) // 40)
+        m_anim, b_anim = m_path[::skip], b_path[::skip]
+
+        # Path trace (static background)
+        fig.add_trace(go.Scatter(x=m_anim, y=b_anim, mode='lines', name='Path', 
+                                line=dict(color='white', dash='dot', width=1)))
+        # Moving Point
+        fig.add_trace(go.Scatter(x=[m_anim[0]], y=[b_anim[0]], mode='markers', name='State',
+                                marker=dict(size=12, color='#00d1ff', symbol='diamond')))
+
+        frames = [go.Frame(data=[go.Contour(z=Z, x=w_range, y=b_range),
+                                go.Scatter(x=m_anim[:i+1], y=b_anim[:i+1]),
+                                go.Scatter(x=[m_anim[i]], y=[b_anim[i]])],
+                          name=str(i)) for i in range(len(m_anim))]
         
-        fig.update_layout(**PlottingFactory.THEME, title="Loss Surface Path (Slope vs Intercept)")
+        fig.update_layout(**PlottingFactory.THEME, title="Loss Landscape Animation",
+            updatemenus=[dict(type="buttons", buttons=[
+                dict(label="Play", method="animate", args=[None, {"frame": {"duration": 50}}]),
+                dict(label="Pause", method="animate", args=[[None], {"frame": {"duration": 0}}])
+            ])])
+        fig.frames = frames
         return fig
 
     @staticmethod
@@ -131,40 +141,33 @@ class PlottingFactory:
     def loss_surface_3d(m_vals: np.ndarray, b_vals: np.ndarray, Z: np.ndarray, 
                         history: Optional[Dict[str, List]] = None) -> go.Figure:
         """
-        Creates a high-performance 3D interactive surface plot of the Loss Function.
+        Animated 3D surface plot with a moving 'Descent' point.
         """
-        fig = go.Figure(data=[go.Surface(z=Z, x=m_vals, y=b_vals, colorscale='Viridis', 
-                                         opacity=0.8, showscale=False)])
+        fig = go.Figure(data=[go.Surface(z=Z, x=m_vals, y=b_vals, colorscale='Viridis', opacity=0.8, showscale=False)])
         
-        # Overlay optimization path if provided
         if history and len(history['w']) > 0 and len(history['w'][0]) == 1:
-            m_path = [wt[0] for wt in history['w']]
-            b_path = history['b']
-            z_path = history['loss']
-            
-            # 1. The Descent Path
-            fig.add_trace(go.Scatter3d(x=m_path, y=b_path, z=z_path, 
-                                       mode='lines', line=dict(color='white', width=6),
-                                       name='Optimization Path'))
-            
-            # 2. Start/End Markers
-            fig.add_trace(go.Scatter3d(x=[m_path[0]], y=[b_path[0]], z=[z_path[0]],
-                                       mode='markers', marker=dict(size=8, color='#ff4b4b'),
-                                       name='Start'))
-            fig.add_trace(go.Scatter3d(x=[m_path[-1]], y=[b_path[-1]], z=[z_path[-1]],
-                                       mode='markers', marker=dict(size=10, color='#00d1ff'),
-                                       name='Converged'))
+            m_path, b_path, z_path = [wt[0] for wt in history['w']], history['b'], history['loss']
+            skip = max(1, len(m_path) // 40)
+            m_a, b_a, z_a = m_path[::skip], b_path[::skip], z_path[::skip]
 
-        fig.update_layout(
-            **PlottingFactory.THEME,
-            title="3D Optimization Terrain",
-            scene=dict(
-                xaxis_title="Slope (m)",
-                yaxis_title="Intercept (b)",
-                zaxis_title="MSE Loss",
-                camera=dict(eye=dict(x=1.5, y=1.5, z=1.2))
-            )
-        )
+            # Static Path Trace
+            fig.add_trace(go.Scatter3d(x=m_a, y=b_a, z=z_a, mode='lines', 
+                                     line=dict(color='white', width=4), name='Descent Path'))
+            # Animated Explorer
+            fig.add_trace(go.Scatter3d(x=[m_a[0]], y=[b_a[0]], z=[z_a[0]], mode='markers', 
+                                     marker=dict(size=8, color='#ff4b4b'), name='Explorer'))
+
+            frames = [go.Frame(data=[go.Surface(z=Z, x=m_vals, y=b_vals),
+                                    go.Scatter3d(x=m_a[:i+1], y=b_a[:i+1], z=z_a[:i+1]),
+                                    go.Scatter3d(x=[m_a[i]], y=[b_a[i]], z=[z_a[i]])],
+                              name=str(i)) for i in range(len(m_a))]
+            fig.frames = frames
+
+        fig.update_layout(**PlottingFactory.THEME, title="3D Optimization Terrain",
+            scene=dict(xaxis_title="Slope (m)", yaxis_title="Intercept (b)", zaxis_title="Loss"),
+            updatemenus=[dict(type="buttons", buttons=[
+                dict(label="Animate Descent", method="animate", args=[None, {"frame": {"duration": 50}}])
+            ])])
         return fig
 
     @staticmethod
