@@ -79,25 +79,45 @@ class OptimizationEngine:
 
     def fit_history(self, X_raw: np.ndarray, y_raw: np.ndarray, 
                     lr: float, iterations: int) -> Dict[str, List]:
-        """Full optimization trajectory for animation purposes."""
+        """
+        Calculates optimization trajectory with Early Stopping and Smart Initialization.
+        """
         X, y = self._validate_inputs(X_raw, y_raw)
         X_poly = self._expand_features(X)
         
+        # 1. Smart Initialization (Small random weights)
+        np.random.seed(42)
+        w = np.random.randn(self.degree) * 0.01
+        b = 0.0
+        
         history: Dict[str, List] = {'w': [], 'b': [], 'loss': []}
-        w, b = self.w.copy(), self.b
+        best_loss = float('inf')
+        patience = 8
+        tol = 1e-7
         
         for i in range(iterations):
             y_p = X_poly @ w + b
             loss = self.calculate_loss(y, y_p)
             
-            # Robustness: Check for explosion (inf/nan)
-            if np.isnan(loss) or np.isinf(loss):
+            # 2. Explosive Divergence Check
+            if np.isnan(loss) or np.isinf(loss) or loss > 1e18:
                 break
                 
             history['w'].append(w.copy())
             history['b'].append(b)
             history['loss'].append(loss)
             
+            # 3. Early Stopping Logic
+            if abs(best_loss - loss) < tol:
+                patience -= 1
+                if patience == 0: break
+            else:
+                patience = 8
+            
+            if loss < best_loss:
+                best_loss = loss
+
+            # 4. Perform Step
             w, b = self.gradient_descent_step(X_poly, y, w, b, lr)
             
         return history

@@ -6,9 +6,6 @@ import ssl
 from typing import Tuple, List, Optional, Union
 from sklearn.datasets import fetch_california_housing, load_diabetes
 
-# Resolve macOS SSL certificate issues for scikit-learn downloads
-ssl._create_default_https_context = ssl._create_unverified_context
-
 logger = logging.getLogger(__name__)
 
 class DataEngine:

@@ -1,8 +1,21 @@
 import streamlit as st
+import ssl
+import urllib.request as request
 import numpy as np
 import pandas as pd
 import time
-import logging
+
+# --- NUCLEAR SSL BYPASS ---
+# This force-patches urllib to ignore SSL certificates at the lowest level.
+def _patched_urlopen(*args, **kwargs):
+    if 'context' not in kwargs:
+        kwargs['context'] = ssl._create_unverified_context()
+    return request.original_urlopen(*args, **kwargs)
+
+if not hasattr(request, 'original_urlopen'):
+    request.original_urlopen = request.urlopen
+    request.urlopen = _patched_urlopen
+# --------------------------
 
 # Refactored Core Imports
 from src.core import OptimizationEngine
