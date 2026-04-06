@@ -113,83 +113,96 @@ if not df_raw.empty:
     # Hero Title
     st.title("Advanced Regression Command Center")
     st.markdown(f"Mode: **{ds_mode}** | Architecture: **Degree {poly_deg} {reg_mode}**")
-    
-    # Tabs Layout
-    tab_fit, tab_anim, tab_loss, tab_diag = st.tabs([
-        "Model Fit & Diagnostic", 
-        "Gradient Descent Animation", 
-        "Loss Geometry", 
-        "Dataset Exploration"
-    ])
+       # --- CACHED HEAVY COMPUTATIONS ---
+    @st.cache_data
+    def get_surface_data(_eng, _X, _y):
+        """Pre-calculates the loss basin once per dataset change."""
+        return _eng.compute_loss_surface(_X, _y)
 
-    # Pre-calculate Optimization for All Tabs
-    eng = OptimizationEngine(degree=poly_deg, alpha=reg_alpha, mode=reg_mode.replace(" (L1)", "").replace(" (L2)", ""))
+    m_vals_grid, b_vals_grid, Z_grid = get_surface_data(eng, X, y)
+
+    # Tabs Layout
+    tab_fit, tab_anim, tab_loss, tab_3d, tab_diag = st.tabs([
+        "Performance", 
+        "Animation", 
+        "Loss Contour", 
+        "3D Surface",
+        "Explorer"
+    ])
     
     with tab_fit:
-        col_m1, col_m2 = st.columns([3, 1])
+        col_m1, col_m2 = st.columns([2.5, 1.5])
         
         with col_m2:
-            st.markdown("### 📊 Metrics")
+            st.markdown("### 📊 Performance Analytics")
             if st.button("Run Full Optimization", use_container_width=True):
+                # Using the core engine with Early Stopping
                 st.session_state.history = eng.fit_history(X, y, lr=lr, iterations=iters)
                 if st.session_state.history and len(st.session_state.history['w']) > 0:
                     st.session_state.learned_w = st.session_state.history['w'][-1]
                     st.session_state.learned_b = st.session_state.history['b'][-1]
             
             if st.session_state.history and st.session_state.learned_w is not None:
-                final_loss = st.session_state.history['loss'][-1]
-                st.metric("Final Loss (MSE)", f"{final_loss:.4f}")
-                st.markdown("##### Learned Weights")
-                st.dataframe(pd.DataFrame({'Weight': st.session_state.learned_w}), 
-                           use_container_width=True)
+                # Calculate metrics for accuracy
+                eng.w = st.session_state.learned_w
+                eng.b = st.session_state.learned_b
+                y_p = eng.predict(X)
+                metrics = eng.get_metrics(y, y_p)
+                
+                # Accuracy Scorecard
+                c1, c2 = st.columns(2)
+                c1.metric("R² Score", f"{metrics['R2']:.4f}")
+                c2.metric("MAE (Error)", f"{metrics['MAE']:.4f}")
+                c1.metric("RMSE", f"{metrics['RMSE']:.4f}")
+                c2.metric("Final MSE", f"{metrics['MSE']:.4f}")
+                
+                st.markdown("##### Weights & Coefficients")
+                st.dataframe(pd.DataFrame({'Weight': st.session_state.learned_w}), use_container_width=True)
             else:
                 st.info("Optimization required")
 
         with col_m1:
             if st.session_state.history and st.session_state.learned_w is not None:
-                # Update engine with learned params for prediction
-                eng.w = st.session_state.learned_w
-                eng.b = st.session_state.learned_b
-                y_p = eng.predict(X) 
+                # Accuracy Diagnostic Visuals
+                sub_tab1, sub_tab2 = st.tabs(["Regression Fit", "Residual (Error) Plot"])
                 
-                fig_fit = PlottingFactory.animated_fit(X, y, {
-                    'w': [st.session_state.learned_w], 
-                    'b': [st.session_state.learned_b]
-                })
-                st.plotly_chart(fig_fit, use_container_width=True)
+                with sub_tab1:
+                    fig_fit = PlottingFactory.animated_fit(X, y, {
+                        'w': [st.session_state.learned_w], 
+                        'b': [st.session_state.learned_b]
+                    })
+                    st.plotly_chart(fig_fit, use_container_width=True)
+                
+                with sub_tab2:
+                    y_p = eng.predict(X)
+                    fig_res = PlottingFactory.residual_plot(y, y_p)
+                    st.plotly_chart(fig_res, use_container_width=True)
             else:
-                st.info("Adjust hyperparameters and click 'Run Optimization' to start.")
+                st.info("Run optimization to see deep diagnostics.")
 
     with tab_anim:
         st.subheader("Real-Time Learning Visualization")
         if st.session_state.history:
             fig_anim = PlottingFactory.animated_fit(X, y, st.session_state.history)
             st.plotly_chart(fig_anim, use_container_width=True)
-            st.markdown("""
-            **What to Observe:**
-            - **Momentum**: Watch how the line 'swings' towards the data.
-            - **Bias Shift**: The line often finds the correct intercept ($b$) before perfectly aligning its slope ($m$).
-            - **Polynomial Curves**: For Degree > 1, watch how the line 'bends' to capture curvature.
-            """)
         else:
-            st.warning("Run optimization in the 'Model Fit' tab first!")
+            st.warning("Run optimization in the 'Performance' tab first!")
 
     with tab_loss:
         if poly_deg == 1:
-            col_l1, col_l2 = st.columns(2)
-            with col_l1:
-                st.subheader("3D Gradient Surface")
-                # Showing static surface for performance, with path overlay if desired
-                # Placeholder for 3D trajectory
-                st.info("Visualizing the convex basin in parameter space.")
-            with col_l2:
-                st.subheader("Contour Level Curves")
-                if st.session_state.history:
-                    fig_contour = PlottingFactory.contour_descent(X, y, st.session_state.history)
-                    st.plotly_chart(fig_contour, use_container_width=True)
+            st.subheader("Top-Down Loss Landscape")
+            fig_contour = PlottingFactory.contour_descent(X, y, st.session_state.history)
+            st.plotly_chart(fig_contour, use_container_width=True)
+        else:
+            st.info("Loss contours are limited to 2-parameter models (Degree 1).")
+
+    with tab_3d:
+        if poly_deg == 1:
+            st.subheader("3D Optimization Basin")
+            fig_3d = PlottingFactory.loss_surface_3d(m_vals_grid, b_vals_grid, Z_grid, st.session_state.history)
+            st.plotly_chart(fig_3d, use_container_width=True)
         else:
             st.info("3D surface visualization is limited to 2-parameter models (Degree 1).")
-            st.markdown(f"**Current Model Dimensions:** {poly_deg} weights + 1 bias = {poly_deg+1}D space.")
 
     with tab_diag:
         st.subheader("Training Dataset Audit")
@@ -202,4 +215,4 @@ if not df_raw.empty:
 
 # Footer
 st.divider()
-st.markdown("Developed by **Antigravity AI (MLE Lead)** | Version **3.0 Stable**")
+st.markdown("Developed by **Antigravity AI (MLE Lead)** | Version **3.5 Final Production**")

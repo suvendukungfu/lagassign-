@@ -10,6 +10,24 @@ class OptimizationEngine:
     Supports Linear, Polynomial, and Regularized models through weight vectorization.
     """
     
+    def get_metrics(self, y_true: np.ndarray, y_pred: np.ndarray) -> Dict[str, float]:
+        """Calculates standard regression metrics."""
+        mse = np.mean((y_true - y_pred)**2)
+        mae = np.mean(np.abs(y_true - y_pred))
+        rmse = np.sqrt(mse)
+        
+        # R2 Score
+        ss_res = np.sum((y_true - y_pred)**2)
+        ss_tot = np.sum((y_true - np.mean(y_true))**2)
+        r2 = 1 - (ss_res / (ss_tot + 1e-10))
+        
+        return {
+            "MSE": float(mse),
+            "MAE": float(mae),
+            "RMSE": float(rmse),
+            "R2": float(r2)
+        }
+
     def __init__(self, weights: Optional[np.ndarray] = None, bias: float = 0.0, 
                  degree: int = 1, alpha: float = 0.0, mode: str = 'none'):
         self.w = weights if weights is not None else np.zeros(degree)
@@ -76,6 +94,31 @@ class OptimizationEngine:
         new_w = w - lr * dw
         new_b = b - lr * db
         return new_w, new_b
+
+    def compute_loss_surface(self, X_raw: np.ndarray, y: np.ndarray, 
+                            m_range: Tuple[float, float] = (-10, 10), 
+                            b_range: Tuple[float, float] = (-10, 10), 
+                            resolution: int = 50) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """
+        High-performance vectorized loss surface calculation.
+        Returns: (m_grid, b_grid, Z_MSE)
+        """
+        m_vals = np.linspace(m_range[0], m_range[1], resolution)
+        b_vals = np.linspace(b_range[0], b_range[1], resolution)
+        M, B = np.meshgrid(m_vals, b_vals)
+        
+        # Vectorized MSE over the grid
+        # y_pred = m*X + b -> shape: (resolution*resolution, n_samples)
+        # Reshaping M, B to (resol^2, 1) to broadcast against X (1, n_samples)
+        X_vec = X_raw.flatten().reshape(1, -1)
+        M_vec = M.flatten().reshape(-1, 1)
+        B_vec = B.flatten().reshape(-1, 1)
+        
+        preds = (M_vec @ X_vec) + B_vec
+        errors = preds - y.reshape(1, -1)
+        Z = np.mean(errors**2, axis=1).reshape(resolution, resolution)
+        
+        return m_vals, b_vals, Z
 
     def fit_history(self, X_raw: np.ndarray, y_raw: np.ndarray, 
                     lr: float, iterations: int) -> Dict[str, List]:
