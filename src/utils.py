@@ -37,7 +37,7 @@ class DataEngine:
             df['target'] = data.target
             return df[['MedInc', 'target']].rename(columns={'MedInc': 'feature'})
         elif name == "diabetes":
-            data = load_diabetes(data_home=local_home)
+            data = load_diabetes()
             df = pd.DataFrame(data.data, columns=data.feature_names)
             df['target'] = data.target
             return df[['bmi', 'target']].rename(columns={'bmi': 'feature'})
