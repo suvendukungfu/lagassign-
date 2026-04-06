@@ -1,7 +1,8 @@
+import os
 import numpy as np
 import pandas as pd
-from typing import Tuple, List, Optional, Union
 import logging
+from typing import Tuple, List, Optional, Union
 from sklearn.datasets import fetch_california_housing, load_diabetes
 
 logger = logging.getLogger(__name__)
@@ -22,16 +23,17 @@ class DataEngine:
 
     @staticmethod
     def load_preset(name: str = "california") -> pd.DataFrame:
-        """Loads a real-world dataset from sklearn."""
+        """Loads real datasets using a local projected directory to bypass OS permissions."""
+        local_home = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".data")
+        os.makedirs(local_home, exist_ok=True)
+
         if name == "california":
-            data = fetch_california_housing()
-            # Feature: MedInc (Median Income), Target: MedHouseVal
+            data = fetch_california_housing(data_home=local_home)
             df = pd.DataFrame(data.data, columns=data.feature_names)
             df['target'] = data.target
             return df[['MedInc', 'target']].rename(columns={'MedInc': 'feature'})
         elif name == "diabetes":
-            data = load_diabetes()
-            # BMI vs Disease Progression
+            data = load_diabetes(data_home=local_home)
             df = pd.DataFrame(data.data, columns=data.feature_names)
             df['target'] = data.target
             return df[['bmi', 'target']].rename(columns={'bmi': 'feature'})
