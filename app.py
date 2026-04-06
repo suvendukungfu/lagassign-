@@ -126,8 +126,9 @@ if not df_raw.empty:
             if st.session_state.history and st.session_state.learned_w is not None:
                 final_loss = st.session_state.history['loss'][-1]
                 st.metric("Final Loss (MSE)", f"{final_loss:.4f}")
+                st.markdown("##### Learned Weights")
                 st.dataframe(pd.DataFrame({'Weight': st.session_state.learned_w}), 
-                           caption="Learned Weights", use_container_width=True)
+                           use_container_width=True)
             else:
                 st.info("Optimization required")
 
